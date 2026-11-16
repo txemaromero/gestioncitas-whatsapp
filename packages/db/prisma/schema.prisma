@@ -1,0 +1,513 @@
+// ClinicAI — multi-tenant data model.
+// All timestamps are timestamptz stored in UTC; tenant time zone lives in tenant_config.timezone.
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "esm"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum AppointmentStatus {
+  pending
+  confirmed
+  cancelled
+
+  @@map("appointment_status")
+}
+
+/// Whether the client came to a past appointment (F15). Null on the appointment = not marked yet.
+enum Attendance {
+  attended
+  no_show
+
+  @@map("attendance")
+}
+
+enum AppointmentSource {
+  whatsapp
+  web
+
+  @@map("appointment_source")
+}
+
+/// How the client accepted the privacy notice (F12, GDPR).
+enum ConsentChannel {
+  whatsapp
+  web
+
+  @@map("consent_channel")
+}
+
+enum MemberRole {
+  owner
+  admin
+  /// F18: sees and manages only the appointments of their own employee.
+  professional
+
+  @@map("member_role")
+}
+
+/// One row per business (tenant). `id` is the tenant_id used everywhere else.
+model TenantConfig {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  clinicName       String   @map("clinic_name")
+  /// Business WhatsApp number in E.164.
+  phoneNormalized  String?  @map("phone_normalized")
+  /// Meta `phone_number_id`: resolves the tenant of every incoming webhook.
+  waPhoneNumberId  String?  @unique @map("wa_phone_number_id")
+  /// Meta access token encrypted with AES-256-GCM (ENCRYPTION_KEY). Null → global token.
+  waAccessTokenEnc String?  @map("wa_access_token_enc")
+  timezone         String   @default("Europe/Madrid")
+  /// F27: address of the public booking page (`/reservar/<slug>`); shown only when enabled in settings.
+  publicSlug       String?  @unique @map("public_slug")
+  /// Validated with zod (`tenantSettingsSchema` in @clinicai/shared).
+  settings         Json     @default("{}")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  members           TenantMember[]
+  invitations       TenantInvitation[]
+  clients           Client[]
+  employees         Employee[]
+  appointments      Appointment[]
+  conversationState ConversationState[]
+  blacklist         BotBlacklist[]
+  chatwootLinks     ChatwootLink[]
+  inboundEvents     InboundEvent[]
+  services          Service[]
+  timeOff           TimeOff[]
+  waitlist          WaitlistEntry[]
+  activity          ActivityLog[]
+  packs             ClientPack[]
+  calendarFeeds     CalendarFeed[]
+  usage             UsageDaily[]
+
+  @@map("tenant_config")
+}
+
+/// Admin-panel users (Kinde `sub`) that belong to a tenant.
+model TenantMember {
+  id          String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId    String     @map("tenant_id") @db.Uuid
+  kindeUserId String     @unique @map("kinde_user_id")
+  email       String?
+  role        MemberRole @default(admin)
+  /// F18: the professional's own employee (only for role = professional).
+  employeeId  String?    @map("employee_id") @db.Uuid
+  createdAt   DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant   TenantConfig @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  employee Employee?    @relation(fields: [tenantId, employeeId], references: [tenantId, id], onDelete: Cascade)
+
+  @@unique([tenantId, employeeId])
+  @@index([tenantId])
+  @@map("tenant_members")
+}
+
+/// F18: pending access to the panel. Whoever signs in with this email joins the clinic
+/// with this role (and employee, for professionals); then the invitation is deleted.
+model TenantInvitation {
+  id         String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId   String     @map("tenant_id") @db.Uuid
+  /// Lower case.
+  email      String
+  role       MemberRole
+  employeeId String?    @map("employee_id") @db.Uuid
+  invitedBy  String?    @map("invited_by")
+  createdAt  DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant   TenantConfig @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  employee Employee?    @relation(fields: [tenantId, employeeId], references: [tenantId, id], onDelete: Cascade)
+
+  @@unique([tenantId, email])
+  @@unique([tenantId, employeeId])
+  @@index([email])
+  @@map("tenant_invitations")
+}
+
+/// End customers (patients). The phone identifies the client inside each tenant.
+model Client {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  name      String
+  /// E.164. Optional for clients created from the web without phone.
+  phone     String?
+  email     String?
+  notes     String?
+  /// Privacy notice accepted (null → the bot asks before processing anything else).
+  consentAt      DateTime?       @map("consent_at") @db.Timestamptz(6)
+  consentChannel ConsentChannel? @map("consent_channel")
+  /// Version of the privacy notice accepted (`PRIVACY_NOTICE_VERSION` in @clinicai/shared).
+  consentVersion String?         @map("consent_version")
+  /// Set when personal data were removed by the retention policy (appointments are kept).
+  anonymizedAt   DateTime?       @map("anonymized_at") @db.Timestamptz(6)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant       TenantConfig    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  appointments Appointment[]
+  waitlist     WaitlistEntry[]
+  packs        ClientPack[]
+
+  @@unique([tenantId, phone])
+  @@unique([tenantId, id])
+  @@index([tenantId, name])
+  @@map("clients")
+}
+
+/// Professionals. `schedule` = [{ day, start: "HH:mm", end: "HH:mm" }]; empty → hidden in the bot.
+model Employee {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  name      String
+  role      String
+  schedule  Json     @default("[]")
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant       TenantConfig       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  appointments Appointment[]
+  timeOff      TimeOff[]
+  members      TenantMember[]
+  invitations  TenantInvitation[]
+  calendarFeed CalendarFeed?
+
+  @@unique([tenantId, id])
+  @@index([tenantId])
+  @@map("employees")
+}
+
+/// Services offered by a clinic, each with its own duration (F14). Every professional can do
+/// every service. A service used by appointments cannot be deleted (deactivate it instead).
+model Service {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId        String   @map("tenant_id") @db.Uuid
+  name            String
+  durationMinutes Int      @map("duration_minutes")
+  active          Boolean  @default(true)
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant       TenantConfig    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  appointments Appointment[]
+  waitlist     WaitlistEntry[]
+  packs        ClientPack[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, name])
+  @@map("services")
+}
+
+/// Time off (F14): absence of one professional, or closure of the whole clinic (holiday) when
+/// employee_id is null. [starts_at, ends_at) blocks bookings in the bot and in the web.
+model TimeOff {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId   String   @map("tenant_id") @db.Uuid
+  /// Null → the whole clinic.
+  employeeId String?  @map("employee_id") @db.Uuid
+  startsAt   DateTime @map("starts_at") @db.Timestamptz(6)
+  endsAt     DateTime @map("ends_at") @db.Timestamptz(6)
+  reason     String?
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant   TenantConfig @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  /// Composite FK: an absence can never point to another tenant's employee (MATCH SIMPLE: not
+  /// checked when employee_id is null).
+  employee Employee?    @relation(fields: [tenantId, employeeId], references: [tenantId, id], onDelete: Cascade)
+
+  @@index([tenantId, startsAt])
+  @@index([tenantId, employeeId])
+  @@map("time_off")
+}
+
+/// Appointments. Composite FKs (tenant_id, client_id/employee_id) make cross-tenant links impossible.
+model Appointment {
+  id              String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId        String            @map("tenant_id") @db.Uuid
+  clientId        String            @map("client_id") @db.Uuid
+  employeeId      String            @map("employee_id") @db.Uuid
+  /// Start instant (UTC).
+  date            DateTime          @db.Timestamptz(6)
+  durationMinutes Int               @default(60) @map("duration_minutes")
+  /// Service booked (F14), optional: older appointments and quick web bookings have none.
+  serviceId       String?           @map("service_id") @db.Uuid
+  status          AppointmentStatus @default(pending)
+  notes           String?
+  source          AppointmentSource @default(web)
+  reminderSentAt  DateTime?         @map("reminder_sent_at") @db.Timestamptz(6)
+  /// F30: second reminder, the same day a few hours before (optional per clinic).
+  secondReminderSentAt DateTime?    @map("second_reminder_sent_at") @db.Timestamptz(6)
+  /// Marked by the staff after the appointment (F15); cleared if it is cancelled or moved.
+  attendance      Attendance?
+  attendanceMarkedAt DateTime?      @map("attendance_marked_at") @db.Timestamptz(6)
+  /// F26: treatment (series of appointments created together); null = a single appointment.
+  seriesId        String?           @map("series_id") @db.Uuid
+  /// F26: pack (bono) whose session this appointment spent, set when the attendance is marked.
+  packId          String?           @map("pack_id") @db.Uuid
+  createdAt       DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime          @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant   TenantConfig @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  client   Client       @relation(fields: [tenantId, clientId], references: [tenantId, id], onDelete: Cascade)
+  employee Employee     @relation(fields: [tenantId, employeeId], references: [tenantId, id], onDelete: Cascade)
+  /// NoAction (checked at the end of the statement): a used service cannot be deleted, while a
+  /// tenant deletion still cascades over appointments and services together.
+  service  Service?     @relation(fields: [tenantId, serviceId], references: [tenantId, id], onDelete: NoAction)
+  /// The pack must belong to the same client (and clinic). NoAction: a used pack cannot be
+  /// deleted, while erasing the client still removes both in the same statement.
+  pack     ClientPack?  @relation(fields: [tenantId, clientId, packId], references: [tenantId, clientId, id], onDelete: NoAction)
+
+  @@index([tenantId, date])
+  @@index([employeeId, date])
+  @@index([clientId])
+  @@index([tenantId, seriesId])
+  @@index([packId])
+  @@map("appointments")
+}
+
+/// F26: session pack (bono) of a client. A session is spent when one of their appointments is
+/// marked as attended (or as a no-show, if the clinic says so): that appointment points here.
+model ClientPack {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId      String    @map("tenant_id") @db.Uuid
+  clientId      String    @map("client_id") @db.Uuid
+  /// Only for this service; null = any service.
+  serviceId     String?   @map("service_id") @db.Uuid
+  name          String
+  totalSessions Int       @map("total_sessions")
+  /// Last day it can be used (local date of the clinic); null = no expiry.
+  expiresOn     DateTime? @map("expires_on") @db.Date
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant       TenantConfig  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  client       Client        @relation(fields: [tenantId, clientId], references: [tenantId, id], onDelete: Cascade)
+  /// NoAction, as for appointments: a service used by a pack cannot be deleted (deactivate it).
+  service      Service?      @relation(fields: [tenantId, serviceId], references: [tenantId, id], onDelete: NoAction)
+  appointments Appointment[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, clientId, id])
+  @@index([tenantId, clientId])
+  @@map("client_packs")
+}
+
+/// Persisted conversation state of the WhatsApp bot (replaces BuilderBot's in-memory state).
+model ConversationState {
+  tenantId   String   @map("tenant_id") @db.Uuid
+  phone      String
+  flow       String
+  step       String
+  data       Json     @default("{}")
+  errorCount Int      @default(0) @map("error_count")
+  updatedAt  DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  /// 30 minutes after the last activity.
+  expiresAt  DateTime @map("expires_at") @db.Timestamptz(6)
+
+  tenant TenantConfig @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@id([tenantId, phone])
+  @@index([expiresAt])
+  @@map("conversation_state")
+}
+
+/// Numbers with the bot paused (human handoff from Chatwoot).
+model BotBlacklist {
+  tenantId  String   @map("tenant_id") @db.Uuid
+  phone     String
+  reason    String?
+  createdBy String?  @map("created_by")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant TenantConfig @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@id([tenantId, phone])
+  @@map("bot_blacklist")
+}
+
+enum InboundEventSource {
+  whatsapp
+  chatwoot
+  /// Jobs created by the app itself (e.g. delete a contact in Chatwoot after an erasure).
+  internal
+
+  @@map("inbound_event_source")
+}
+
+enum InboundEventStatus {
+  pending
+  processing
+  done
+  failed
+
+  @@map("inbound_event_status")
+}
+
+/// Durable inbox of webhook events (WhatsApp messages, Chatwoot agent actions). The webhook
+/// stores the event and only then answers 200; workers process it in order per conversation
+/// (tenant + phone) with retries. Unique (source, external_id) = idempotency (Meta retries).
+/// Done events are purged after 7 days (payload cleared on completion), failed ones after 30.
+model InboundEvent {
+  id          BigInt             @id @default(autoincrement())
+  source      InboundEventSource
+  /// WhatsApp message id (wamid) or Chatwoot `<account>:<message id>`.
+  externalId  String             @map("external_id")
+  tenantId    String             @map("tenant_id") @db.Uuid
+  /// Client phone (E.164): the conversation key together with tenant_id.
+  phone       String
+  payload     Json
+  status      InboundEventStatus @default(pending)
+  attempts    Int                @default(0)
+  /// Not claimable before this instant (retry backoff).
+  availableAt DateTime           @default(now()) @map("available_at") @db.Timestamptz(6)
+  /// Lease of the worker processing it; after it expires another worker may take it over.
+  lockedUntil DateTime?          @map("locked_until") @db.Timestamptz(6)
+  lastError   String?            @map("last_error")
+  receivedAt  DateTime           @default(now()) @map("received_at") @db.Timestamptz(6)
+  finishedAt  DateTime?          @map("finished_at") @db.Timestamptz(6)
+
+  tenant TenantConfig @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([source, externalId])
+  @@index([status, availableAt])
+  @@index([tenantId, phone, id])
+  @@index([finishedAt])
+  @@map("inbound_events")
+}
+
+/// Chatwoot contact/conversation used to mirror a WhatsApp chat (tenant + phone).
+model ChatwootLink {
+  tenantId       String   @map("tenant_id") @db.Uuid
+  phone          String
+  accountId      Int      @map("account_id")
+  inboxId        Int      @map("inbox_id")
+  contactId      Int      @map("contact_id")
+  conversationId Int      @map("conversation_id")
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant TenantConfig @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@id([tenantId, phone])
+  @@index([accountId, conversationId])
+  @@map("chatwoot_links")
+}
+
+enum WaitlistStatus {
+  waiting
+  booked
+  left
+  expired
+
+  @@map("waitlist_status")
+}
+
+/// F17: client waiting for a slot. The window holds the acceptable start instants (a whole day,
+/// or one exact time when other times that day were free); preferred_start is the time the client
+/// asked for (whole-day entries get the free slot closest to it). The current offer lives on the entry:
+/// it is "open" while offer_expires_at is in the future, and offered_starts avoids offering the
+/// same start twice. offer_employee_id is only a hint: the booking revalidates everything.
+model WaitlistEntry {
+  id              String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId        String         @map("tenant_id") @db.Uuid
+  clientId        String         @map("client_id") @db.Uuid
+  serviceId       String?        @map("service_id") @db.Uuid
+  durationMinutes Int            @map("duration_minutes")
+  windowStart     DateTime       @map("window_start") @db.Timestamptz(6)
+  windowEnd       DateTime       @map("window_end") @db.Timestamptz(6)
+  wholeDay        Boolean        @default(false) @map("whole_day")
+  preferredStart  DateTime       @map("preferred_start") @db.Timestamptz(6)
+  status          WaitlistStatus @default(waiting)
+  offerStart      DateTime?      @map("offer_start") @db.Timestamptz(6)
+  offerEmployeeId String?        @map("offer_employee_id") @db.Uuid
+  offerExpiresAt  DateTime?      @map("offer_expires_at") @db.Timestamptz(6)
+  offeredStarts   DateTime[]     @default([]) @map("offered_starts") @db.Timestamptz(6)
+  closedAt        DateTime?      @map("closed_at") @db.Timestamptz(6)
+  createdAt       DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime       @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant  TenantConfig @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  client  Client       @relation(fields: [tenantId, clientId], references: [tenantId, id], onDelete: Cascade)
+  service Service?     @relation(fields: [tenantId, serviceId], references: [tenantId, id], onDelete: Cascade)
+
+  @@index([tenantId, status, createdAt])
+  @@index([clientId])
+  @@map("waitlist_entries")
+}
+
+enum ActivityActor {
+  member
+  whatsapp
+  system
+
+  @@map("activity_actor")
+}
+
+/// F24: who did what (panel users, clients through WhatsApp, automatic jobs). Append-only for the
+/// application role. No names, phones, emails, notes or file contents: only ids and safe details
+/// (status, times, professional). client_id has no foreign key on purpose: the entry survives the
+/// client, and erasing or anonymising the client clears it.
+model ActivityLog {
+  id            BigInt        @id @default(autoincrement())
+  tenantId      String        @map("tenant_id") @db.Uuid
+  createdAt     DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  actorType     ActivityActor @map("actor_type")
+  actorMemberId String?       @map("actor_member_id") @db.Uuid
+  /// Email of the panel user at that moment, or "WhatsApp" / "Sistema".
+  actorLabel    String        @map("actor_label")
+  action        String
+  entityType    String?       @map("entity_type")
+  entityId      String?       @map("entity_id")
+  clientId      String?       @map("client_id") @db.Uuid
+  details       Json          @default("{}")
+
+  tenant TenantConfig @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, id])
+  @@index([tenantId, clientId])
+  @@index([createdAt])
+  @@map("activity_log")
+}
+
+/// F28: secret link to subscribe to a professional's agenda (iCalendar, read-only) from Google,
+/// Apple or Outlook. The token is looked up by its SHA-256 and kept encrypted (ENCRYPTION_KEY) so
+/// the panel can show it again. One per professional; a new one replaces it.
+model CalendarFeed {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId   String    @map("tenant_id") @db.Uuid
+  employeeId String    @map("employee_id") @db.Uuid
+  tokenHash  String    @unique @map("token_hash")
+  tokenEnc   String    @map("token_enc")
+  /// Full client names instead of initials.
+  fullNames  Boolean   @default(false) @map("full_names")
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  lastUsedAt DateTime? @map("last_used_at") @db.Timestamptz(6)
+
+  tenant   TenantConfig @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  employee Employee     @relation(fields: [tenantId, employeeId], references: [tenantId, id], onDelete: Cascade)
+
+  @@unique([tenantId, employeeId])
+  @@map("calendar_feeds")
+}
+
+/// F31: usage counters per clinic and UTC day for the platform console: WhatsApp messages
+/// (received, sent, templates), AI requests and tokens per model, seconds of voice transcribed.
+/// Only numbers. Written and read with the system connection: the application role has no access.
+model UsageDaily {
+  tenantId String   @map("tenant_id") @db.Uuid
+  day      DateTime @db.Date
+  metric   String
+  /// Model of the AI metrics; empty for the rest.
+  model    String   @default("")
+  amount   BigInt   @default(0)
+
+  tenant TenantConfig @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@id([tenantId, day, metric, model])
+  @@index([day])
+  @@map("usage_daily")
+}

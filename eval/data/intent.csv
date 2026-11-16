@@ -1,0 +1,101 @@
+question,ground_truth
+"Hola, quería pedir cita para mañana por la tarde",CITA
+"Hola",FAQ
+"quiero reservar una sesion de fisio para el lunes",CITA
+"¿Dónde estáis exactamente?",FAQ
+"Tenéis hueco el jueves a las 6?",CITA
+"¿Cómo puedo anular una cita?",FAQ
+"Necesito un fisio, tengo la espalda fatal desde el finde",CITA
+"Buenos días!!",FAQ
+"No podré ir a la cita del martes, ¿puedo cambiarla?",CITA
+"¿Me confirmas que tengo cita el jueves a las 10?",FAQ
+"Quiero cancelar mi cita del jueves",CITA
+"cual es la direccion de la clinica?",FAQ
+"busco osteopata para una contractura en el cuello",CITA
+"Muchas gracias, hasta luego",FAQ
+"Sería para mi madre, la operaron de la rodilla y necesita rehabilitación",CITA
+"a que hora abris?",FAQ
+"hay disponibilidad esta semana para un masaje de descarga?",CITA
+"¿Tenéis parking?",FAQ
+"Me gustaría que me viera Marcos",CITA
+"¿Cuánto cuesta una sesión de fisioterapia?",FAQ
+"¿Puede atenderme Inés el viernes por la mañana?",CITA
+"como se cancela una cita?? es la primera vez q uso esto",FAQ
+"¿Es posible que me vea el mismo fisio de la otra vez?",CITA
+"aceptais tarjeta?",FAQ
+"agendame una cita pa el miercoles a las 10 porfa",CITA
+"¿Trabajáis con Sanitas?",FAQ
+"necesito una ecografia del hombro, cuando podriais?",CITA
+"gracias!!",FAQ
+"Quisiera reservar presoterapia para la semana que viene",CITA
+"¿Hacéis osteopatía?",FAQ
+"Me podéis dar cita para un masaje de descarga?",CITA
+"Quería confirmar que mi cita sigue siendo mañana a las 9:30",FAQ
+"me he torcido el tobillo jugando al futbol y necesito que me vean cuanto antes",CITA
+"¿Tienen fisioterapia para embarazadas?",FAQ
+"tienes algo libre hoy a ultima hora?",CITA
+"¿Es normal que me duela más después de la primera sesión?",FAQ
+"Buenas, ¿podría hablar con alguien sobre mi caso?",CITA
+"teneis presoterapia?",FAQ
+"Cambiame la cita del lunes al miercoles x favor",CITA
+"abris los sabados?",FAQ
+"anula mi cita de mañana que me ha surgido un imprevisto",CITA
+"¿Qué tengo que hacer para cambiar una cita?",FAQ
+"Hola! Busco cita con Daniel para osteopatía",CITA
+"adios, buen finde",FAQ
+"me gustaria empezar rehabilitacion despues de la operacion del cruzado",CITA
+"hay sitio para aparcar cerca?",FAQ
+"¿Qué huecos tenéis el próximo martes?",CITA
+"tengo cita el lunes verdad?",FAQ
+"Para el viernes a las 17:00 tendrías sitio?",CITA
+"¿Atendéis urgencias?",FAQ
+"necesito una sesion esta semana, me duele muchisimo la lumbar",CITA
+"se puede ir sin cita?",FAQ
+"quiero pedir hora",CITA
+"¿Cuál es vuestro teléfono?",FAQ
+"mañana a las 9 puedo ir?",CITA
+"tengo agujetas despues del masaje de ayer, es normal?",FAQ
+"Hola, soy Marta. Tengo cita el lunes pero no puedo ir, ¿me la pasáis al martes?",CITA
+"¿Es mejor frío o calor para una contractura?",FAQ
+"reservame con ines el dia 15 a las 12",CITA
+"¿Cuánto dura una sesión?",FAQ
+"Busco un fisio para tratarme una tendinitis en el codo",CITA
+"ok",FAQ
+"¿Me podría ver alguien hoy? Tengo el cuello bloqueado",CITA
+"vale perfecto 👍",FAQ
+"Hay hueco para presoterapia el jueves?",CITA
+"¿Hacéis factura?",FAQ
+"quiero una cita de valoracion",CITA
+"¿Qué diferencia hay entre fisioterapia y osteopatía?",FAQ
+"Necesito retrasar mi cita de las 11 una hora, ¿se puede?",CITA
+"¿Tratáis lesiones deportivas?",FAQ
+"Me gustaría reservar una sesión de osteopatía con Marcos la semana que viene",CITA
+"hola buenas tardes, una pregunta",FAQ
+"No voy a poder ir el viernes a las 18:00, cancelad mi cita por favor",CITA
+"¿Abrís en agosto?",FAQ
+"¿Qué días tiene libres Daniel?",CITA
+"¿Hacéis bonos de varias sesiones?",FAQ
+"Quiero apuntar a mi hijo, juega a baloncesto y tiene una sobrecarga en el gemelo",CITA
+"se puede pagar en efectivo?",FAQ
+"tengo una lesion en el hombro y quisiera que me tratarais",CITA
+"¿Con cuánta antelación hay que avisar para cancelar?",FAQ
+"buenas tardes, me das cita para el lunes a primera hora?",CITA
+"¿Hace falta volante del médico para ir al fisio?",FAQ
+"Hola necesito un masaje de descarga antes de la maraton del domingo",CITA
+"atendeis a niños?",FAQ
+"podria ir el martes a las 7 de la mañana?",CITA
+"¿A qué hora cerráis los viernes?",FAQ
+"Quiero reprogramar mi sesión de esta semana",CITA
+"¿La presoterapia sirve para la retención de líquidos?",FAQ
+"cuando teneis disponibilidad para una ecografia?",CITA
+"¿Cuántos fisioterapeutas sois en la clínica?",FAQ
+"sería para hacerme una ecografía de rodilla",CITA
+"No me ha llegado el recordatorio, ¿mi cita del miércoles está bien?",FAQ
+"me apuntas para el miercoles a las 19:30?",CITA
+"¿Tengo que llevar algo a la primera sesión?",FAQ
+"¿Me puede atender alguien la semana que viene por las tardes?",CITA
+"El dolor de rodilla al subir escaleras puede ser tendinitis?",FAQ
+"necesito cita con el fisio xfa",CITA
+"¿Hacéis ecografías?",FAQ
+"Me encantaría que me volviera a tratar Inés, ¿cuándo tiene hueco?",CITA
+"Perfecto, nos vemos entonces. Un saludo!",FAQ

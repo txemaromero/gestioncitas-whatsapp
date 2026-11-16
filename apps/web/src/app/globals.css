@@ -1,0 +1,114 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+
+/* ClinicAI theme: minimal, professional — white, black and blue. */
+:root {
+  --background: #ffffff;
+  --foreground: #0a0a0a;
+  --card: #ffffff;
+  --card-foreground: #0a0a0a;
+  --popover: #ffffff;
+  --popover-foreground: #0a0a0a;
+  --primary: #2563eb;
+  --primary-foreground: #ffffff;
+  --secondary: #f4f4f5;
+  --secondary-foreground: #0a0a0a;
+  --muted: #f4f4f5;
+  --muted-foreground: #52525b;
+  --accent: #eff6ff;
+  --accent-foreground: #1d4ed8;
+  --destructive: #dc2626;
+  --destructive-foreground: #ffffff;
+  --border: #e4e4e7;
+  /* Edge of text fields, selects and the client picker: ≥ 3:1 on white and on muted (WCAG 1.4.11).
+     The former #d4d4d8 (1.5:1) hardly stood out from the background. test/theme.test.ts checks it. */
+  --input: #8a8a93;
+  --ring: #2563eb;
+  --radius: 0.625rem;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html,
+  body {
+    @apply bg-background text-foreground antialiased;
+  }
+}
+
+/* FullCalendar 7 (classic theme) adapted to the palette. Scoped variables override the theme's :root. */
+.clinicai-calendar {
+  --fc-classic-button: #0a0a0a;
+  --fc-classic-button-border: #0a0a0a;
+  --fc-classic-button-strong: #2563eb;
+  --fc-classic-button-strong-border: #1d4ed8;
+  --fc-classic-button-outline: #2563eb80;
+  --fc-classic-primary: #2563eb;
+  --fc-classic-today: #eff6ff;
+  --fc-classic-highlight: #dbeafe80;
+  --fc-classic-border: #e4e4e7;
+  --fc-classic-foreground: #0a0a0a;
+  /* F25: days of other months (the theme's #9ca3af is 2.5:1 on white; WCAG AA asks 4.5:1). */
+  --fc-classic-faint-foreground: #6b7280;
+  font-size: 14px;
+}
+
+.clinicai-calendar .appointment-cancelled {
+  opacity: 0.55;
+  text-decoration: line-through;
+}
+
+/* F15: the client did not come — a red edge, the ✗ in the title says it in text. */
+.clinicai-calendar .appointment-no-show {
+  opacity: 0.75;
+  box-shadow: inset 4px 0 0 #dc2626;
+}
+
+/* F14: absences (striped, employee colour) and clinic closures (shaded background). */
+.clinicai-calendar .time-off-employee {
+  opacity: 0.8;
+  cursor: default;
+  background-image: repeating-linear-gradient(135deg, transparent 0 6px, rgb(255 255 255 / 0.3) 6px 12px);
+}
+
+.clinicai-calendar .time-off-clinic {
+  overflow: hidden;
+  background-color: color-mix(in oklab, var(--muted-foreground) 22%, transparent);
+}
+
+/* F26: sonner's rich colours (light theme) are below the 4.5:1 contrast of WCAG AA on their pale
+   backgrounds; darker texts (≈ 6:1). `body` wins over the styles sonner injects after this file. */
+body [data-sonner-toaster][data-sonner-theme='light'] {
+  --success-text: hsl(140, 100%, 22%);
+  --info-text: hsl(210, 92%, 35%);
+  --warning-text: hsl(31, 92%, 30%);
+  --error-text: hsl(360, 100%, 38%);
+}

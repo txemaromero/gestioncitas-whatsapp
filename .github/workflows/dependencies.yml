@@ -1,0 +1,63 @@
+# F25: known vulnerabilities in the dependencies.
+# - Fails with a high or critical vulnerability in a production dependency (what the bot and the
+#   panel run). Development tools only appear in the report.
+# - Runs when the dependencies change and every Monday, because new advisories appear for
+#   versions already installed. GitHub does not raise Dependabot alerts for this lockfile format
+#   (pnpm 12), so this check replaces them.
+# - The report of the run also lists the packages with newer versions.
+name: Dependencias
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - pnpm-lock.yaml
+      - pnpm-workspace.yaml
+      - '**/package.json'
+      - .github/workflows/dependencies.yml
+  pull_request:
+    paths:
+      - pnpm-lock.yaml
+      - pnpm-workspace.yaml
+      - '**/package.json'
+      - .github/workflows/dependencies.yml
+  schedule:
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          package-manager-cache: false
+
+      - name: Install pnpm
+        run: npm install -g pnpm@12.18.0
+
+      - name: Production dependencies (high or critical fails)
+        run: pnpm audit --prod --audit-level high
+
+      - name: Report (all dependencies and newer versions)
+        if: always()
+        run: |
+          {
+            echo '## Vulnerabilidades conocidas (todas las dependencias, también las de desarrollo)'
+            echo '```'
+            pnpm audit || true
+            echo '```'
+            echo '## Paquetes con versiones nuevas'
+            echo '```'
+            pnpm -r outdated --format list || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

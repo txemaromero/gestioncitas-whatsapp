@@ -1,0 +1,46 @@
+# deps / build
+node_modules/
+dist/
+.next/
+out/
+.turbo/
+coverage/
+*.tsbuildinfo
+next-env.d.ts
+
+# generated
+packages/db/src/generated/
+
+# env
+.env
+.env.*
+!.env.example
+
+# local data
+.data/
+.pgdata/
+playwright-report/
+test-results/
+apps/web/e2e/.auth/
+
+# python
+__pycache__/
+.venv/
+eval/results/*.json
+eval/results/*.md
+!eval/results/.gitkeep
+
+# reference material kept out of the repo (large binaries / duplicates)
+/*.pdf
+docs/*.pdf
+
+# local only, never published: Claude Code instructions and the original specification
+/CLAUDE.md
+/docs/PROMPT.md
+
+# os / editors
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json

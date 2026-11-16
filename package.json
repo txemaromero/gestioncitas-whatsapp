@@ -1,0 +1,41 @@
+{
+  "name": "gestioncitas-whatsapp",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@12.18.0+sha512.9d7882d5dc82147ecfc4e062aa34834e0ad0296710a1837a1115ae012127d36b7109e321ac1598a1dd0a65597681b1e99917e12ed0d749eae91187943363beb3",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "dev": "pnpm --parallel --filter @clinicai/bot --filter @clinicai/web dev",
+    "dev:bot": "pnpm --filter @clinicai/bot dev",
+    "dev:web": "pnpm --filter @clinicai/web dev",
+    "db:local": "pnpm --filter @clinicai/db db:local",
+    "db:app-role": "pnpm --filter @clinicai/db db:app-role",
+    "db:generate": "pnpm --filter @clinicai/db generate",
+    "db:migrate": "pnpm --filter @clinicai/db migrate:deploy",
+    "db:migrate:dev": "pnpm --filter @clinicai/db migrate:dev",
+    "db:seed": "pnpm --filter @clinicai/db seed",
+    "bot:simulate": "pnpm --filter @clinicai/bot simulate",
+    "preflight": "pnpm --filter @clinicai/bot preflight",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint . && pnpm --filter @clinicai/web lint",
+    "typecheck": "pnpm -r typecheck",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "e2e": "pnpm --filter @clinicai/web e2e",
+    "build:web": "pnpm --filter @clinicai/web build"
+  },
+  "devDependencies": {
+    "@eslint/js": "9.39.5",
+    "@netlify/plugin-nextjs": "5.16.6",
+    "@types/node": "24.19.2",
+    "eslint": "9.39.5",
+    "globals": "16.5.0",
+    "prettier": "3.9.10",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.72.2",
+    "vitest": "5.1.0"
+  }
+}

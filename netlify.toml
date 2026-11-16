@@ -1,0 +1,12 @@
+# Admin panel (apps/web) on Netlify — base directory: repository root.
+[build]
+  command = "npm install -g pnpm@12.18.0 && pnpm install --frozen-lockfile && pnpm build:web"
+  publish = "apps/web/.next"
+
+[build.environment]
+  NODE_VERSION = "24"
+  NEXT_TELEMETRY_DISABLED = "1"
+
+# Next.js runtime (OpenNext-based adapter maintained by Netlify).
+[[plugins]]
+  package = "@netlify/plugin-nextjs"

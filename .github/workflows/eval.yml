@@ -1,0 +1,120 @@
+# F22: evaluation of the bot's AI prompts (eval/) against OpenAI.
+# - Runs when the prompts, the FisioDemo FAQ knowledge or the evaluation change, and blocks the
+#   change if a target is missed (intent ≥ 99 %, FAQ ≥ 0.75; see eval/README.md).
+# - Can be launched by hand (Actions → "Evaluación IA" → Run workflow) with another model, e.g. to
+#   choose the successor of gpt-4o-mini (retired on 2027-01-14).
+# - Needs the repository secret OPENAI_API_KEY. Without it (or in pull requests from forks, which
+#   get no secrets) the job is reported as skipped and does not fail. F33: the key only reaches the
+#   two steps that call OpenAI; the dependencies are installed from a lock with hashes.
+# - The model evaluated by default is the repository variable OPENAI_MODEL (set it to the one used
+#   in production), or gpt-4o-mini.
+name: Evaluación IA
+
+on:
+  pull_request:
+    paths:
+      - apps/bot/src/prompts/**
+      - packages/db/prisma/seed-data/fisiodemo-faq.txt
+      - eval/**
+      - .github/workflows/eval.yml
+  push:
+    branches: [main]
+    paths:
+      - apps/bot/src/prompts/**
+      - packages/db/prisma/seed-data/fisiodemo-faq.txt
+      - eval/**
+      - .github/workflows/eval.yml
+  workflow_dispatch:
+    inputs:
+      model:
+        description: Modelo a evaluar (vacío = el de producción, variable OPENAI_MODEL)
+        required: false
+        type: string
+      judge_model:
+        description: Modelo juez de Ragas (vacío = el mismo que el evaluado)
+        required: false
+        type: string
+      only:
+        description: Qué evaluar
+        required: true
+        default: todo
+        type: choice
+        options: [todo, intencion, faq]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: eval-${{ github.ref }}-${{ inputs.model || 'default' }}
+  cancel-in-progress: true
+
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      # Only whether the key exists, not the key itself.
+      HAS_OPENAI_KEY: ${{ secrets.OPENAI_API_KEY != '' }}
+      OPENAI_MODEL: ${{ inputs.model || vars.OPENAI_MODEL || 'gpt-4o-mini' }}
+      RAGAS_LLM_MODEL: ${{ inputs.judge_model }}
+      ONLY: ${{ inputs.only || 'todo' }}
+    steps:
+      - name: No OpenAI key
+        if: env.HAS_OPENAI_KEY != 'true'
+        run: |
+          echo "::notice title=Evaluación IA omitida::Falta el secreto OPENAI_API_KEY (Settings → Secrets and variables → Actions). En las pull requests desde forks no hay secretos."
+          echo "## Evaluación IA omitida" >> "$GITHUB_STEP_SUMMARY"
+          echo "Falta el secreto \`OPENAI_API_KEY\`, así que no se ha llamado a la API." >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: env.HAS_OPENAI_KEY == 'true'
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        if: env.HAS_OPENAI_KEY == 'true'
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: eval/requirements.lock
+
+      # Every package (also the indirect ones) is checked against its hash (eval/README.md).
+      - name: Install dependencies
+        if: env.HAS_OPENAI_KEY == 'true'
+        run: python -m pip install --require-hashes -r eval/requirements.lock
+
+      - name: Check data and prompts
+        if: env.HAS_OPENAI_KEY == 'true'
+        run: |
+          python eval/eval_intent.py --dry-run
+          python eval/eval_faq.py --dry-run
+
+      - name: Intent (CITA / FAQ)
+        id: intent
+        if: env.HAS_OPENAI_KEY == 'true' && env.ONLY != 'faq'
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: python eval/eval_intent.py --strict
+
+      # Runs even if the intent evaluation failed, so one run reports both.
+      - name: FAQ answers (Ragas)
+        id: faq
+        if: ${{ !cancelled() && env.HAS_OPENAI_KEY == 'true' && env.ONLY != 'intencion' }}
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: python eval/eval_faq.py --strict
+
+      # The model typed by hand may have characters an artifact name does not accept.
+      - name: Report name
+        id: report
+        if: ${{ !cancelled() && env.HAS_OPENAI_KEY == 'true' }}
+        run: echo "model=$(printf '%s' "$OPENAI_MODEL" | tr -c 'A-Za-z0-9._-' '-')" >> "$GITHUB_OUTPUT"
+
+      - name: Save reports
+        if: ${{ !cancelled() && env.HAS_OPENAI_KEY == 'true' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: evaluacion-ia-${{ steps.report.outputs.model }}-${{ github.run_number }}
+          path: eval/results/
+          if-no-files-found: warn
+          retention-days: 30

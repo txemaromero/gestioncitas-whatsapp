@@ -1,0 +1,111 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# F33: the token of the jobs can only read the repository.
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      # DB tests create one database per Vitest project on this server.
+      TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+    steps:
+      # F33: actions pinned to a commit (the tag only in the comment); credentials not kept on disk.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          # setup-node caches automatically from package.json "packageManager" and runs pnpm to
+          # find its store, but pnpm is installed in the next step: without this the job fails
+          # with "Unable to locate executable file: pnpm".
+          package-manager-cache: false
+
+      - name: Install pnpm
+        run: npm install -g pnpm@12.18.0
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Test
+        run: pnpm test
+
+      - name: Build web
+        run: pnpm build:web
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+          KINDE_CLIENT_ID: ci
+          KINDE_CLIENT_SECRET: ci
+          KINDE_ISSUER_URL: https://example.kinde.com
+          KINDE_SITE_URL: http://localhost:3000
+          KINDE_POST_LOGOUT_REDIRECT_URL: http://localhost:3000
+          KINDE_POST_LOGIN_REDIRECT_URL: http://localhost:3000/dashboard
+          ENCRYPTION_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+
+      # F25: the panel in a real browser, with the Content Security Policy enforced and the
+      # accessibility rules (WCAG 2.1 A/AA) of every page and the main dialogs.
+      - name: Install Playwright browser
+        run: pnpm --filter @clinicai/web exec playwright install --with-deps chromium
+
+      - name: E2E
+        run: pnpm e2e
+        env:
+          E2E_PG_SERVER_URL: postgresql://postgres:postgres@localhost:5432/postgres
+
+      - name: E2E traces
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: e2e-traces
+          path: apps/web/test-results
+          retention-days: 7
+          if-no-files-found: ignore
+
+  # F33: the bot image (apps/bot/Dockerfile) is built on every change, not only when deploying,
+  # and pnpm must work for its runtime user without the network (corepack, hash in package.json).
+  image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Build the bot image
+        run: docker build -f apps/bot/Dockerfile -t clinicai-bot:ci .
+
+      - name: pnpm works offline in the image
+        run: docker run --rm --network none clinicai-bot:ci pnpm --version

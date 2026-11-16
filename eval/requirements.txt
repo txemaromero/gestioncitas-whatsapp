@@ -1,0 +1,13 @@
+# Evaluation dependencies. Supported Python: 3.11 - 3.12 (see README.md).
+# eval_intent.py and every --dry-run only need the standard library;
+# these packages are required for eval_faq.py (Ragas metrics).
+
+ragas==0.4.3
+langchain-openai==1.7.4
+# ragas 0.4.3 imports langchain_community.chat_models.vertexai, which was
+# removed in langchain-community 0.4.2 -> keep 0.4.1.
+langchain-community==0.4.1
+# Newest openai compatible with instructor 1.17 (openai>=3.4 pulls jiter>=0.15).
+openai==3.3.0
+pandas==3.1.1
+python-dotenv==1.2.4
